@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Nortel / Avaya CS1000</title>
+<style>
+  :root {
+    --bg: #eef1f5; --surface: #ffffff; --ink: #1b2430; --muted: #66727f; --line: #e2e7ee;
+    --head: #1b2a3a; --head-ink: #ffffff;
+    --ok: #12905a; --ok-bg: #e3f6ec; --ok-ink: #0b6b42;
+    --bad: #d3342f; --bad-bg: #fde8e7; --bad-ink: #a5201c;
+    --warn: #d98100; --warn-bg: #fff1d9; --warn-ink: #8a5200;
+    --unk: #7b8794; --unk-bg: #edf0f3; --unk-ink: #4a5561;
+    --accent: #2563c9; --shadow: 0 1px 3px rgba(20,35,55,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f151c; --surface: #17202a; --ink: #e6ebf1; --muted: #92a0af; --line: #263340;
+      --head: #0c1219; --head-ink: #e6ebf1;
+      --ok: #2fc585; --ok-bg: #11332a; --ok-ink: #6fe0ae;
+      --bad: #ff6159; --bad-bg: #3b1a1a; --bad-ink: #ff9a94;
+      --warn: #f0a63a; --warn-bg: #3a2b10; --warn-ink: #f6c577;
+      --unk: #8896a5; --unk-bg: #222d38; --unk-ink: #b3bfcb;
+      --accent: #6aa3ff; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; background: var(--bg); color: var(--ink); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Cabecera */
+  .header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 24px; margin-bottom: 20px; }
+  .header h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -.01em; }
+  .sub { font-size: 13px; color: var(--muted); }
+  .sub b { color: var(--ink); font-weight: 600; }
+  .meta { display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .meta b { color: var(--ink); font-weight: 600; }
+  .meta .stale { color: var(--warn-ink); font-weight: 600; }
+
+  /* Insignias */
+  .badge { display: inline-flex; align-items: center; gap: 7px; padding: 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: var(--unk-bg); color: var(--unk-ink); }
+  .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .badge.ok  { background: var(--ok-bg);  color: var(--ok-ink); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad-ink); }
+  .badge.warn{ background: var(--warn-bg);color: var(--warn-ink); }
+  .badge.unk { background: var(--unk-bg); color: var(--unk-ink); }
+
+  /* Panel PBX Link: elemento principal */
+  .link-panel { display: flex; align-items: center; gap: 20px; padding: 22px 26px; margin-bottom: 20px; border-left: 8px solid var(--unk); transition: border-color .3s, background .3s; }
+  .link-panel.ok  { border-left-color: var(--ok);  background: linear-gradient(90deg, var(--ok-bg), var(--surface) 55%); }
+  .link-panel.bad { border-left-color: var(--bad); background: linear-gradient(90deg, var(--bad-bg), var(--surface) 55%); }
+  .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--unk); flex: none; }
+  .link-panel.ok .dot  { background: var(--ok);  animation: pulse-ok 2s infinite; }
+  .link-panel.bad .dot { background: var(--bad); animation: pulse-bad 1s infinite; }
+  @keyframes pulse-ok  { 0% { box-shadow: 0 0 0 0 rgba(18,144,90,.5); }  70% { box-shadow: 0 0 0 14px rgba(18,144,90,0); }  100% { box-shadow: 0 0 0 0 rgba(18,144,90,0); } }
+  @keyframes pulse-bad { 0% { box-shadow: 0 0 0 0 rgba(211,52,47,.55); } 70% { box-shadow: 0 0 0 14px rgba(211,52,47,0); } 100% { box-shadow: 0 0 0 0 rgba(211,52,47,0); } }
+  .link-label { font-size: 13px; color: var(--muted); }
+  .link-state { font-size: 40px; font-weight: 800; line-height: 1.1; letter-spacing: -.01em; color: var(--unk-ink); }
+  .link-panel.ok  .link-state { color: var(--ok); }
+  .link-panel.bad .link-state { color: var(--bad); }
+  .link-note { margin-left: auto; font-size: 13px; color: var(--muted); text-align: right; max-width: 280px; }
+
+  /* Métricas */
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
+  .stat { padding: 18px 22px; }
+  .stat h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .stat .row { display: flex; align-items: baseline; gap: 28px; flex-wrap: wrap; }
+  .stat .big { font-size: 38px; font-weight: 700; line-height: 1; }
+  .stat .lbl { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .stat.sets .big.reg { color: var(--accent); }
+  .stat.vtrk .big.reg { color: var(--ok); }
+  .stat .big.busy { color: var(--warn); }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 14px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--warn); transition: width .4s; }
+
+  /* Tablas */
+  .tables { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; }
+  .split table + table { border-left: 1px solid var(--line); }
+  .split.single { grid-template-columns: 1fr; }
+  .split.single #ipmg-table-b { display: none; }
+  .tables .card { overflow: hidden; }
+  .tables h2 { margin: 0; padding: 12px 16px; background: var(--head); color: var(--head-ink); font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .tables h2 small { font-weight: 400; opacity: .7; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--unk-bg); }
+  .empty { text-align: center; color: var(--muted); padding: 24px; }
+  .detail { color: var(--muted); font-size: 12.5px; }
+
+  #errors { margin-top: 18px; display: none; padding: 12px 16px; border-radius: 8px; background: var(--bad-bg); color: var(--bad-ink); font-size: 13px; }
+  #errors.show { display: block; }
+
+  @media (max-width: 860px) { .stats, .tables, .split { grid-template-columns: 1fr; } .split table + table { border-left: 0; border-top: 1px solid var(--line); } .link-note { display: none; } .link-state { font-size: 32px; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card header">
+    <div>
+      <h1>Nortel / Avaya CS1000</h1>
+      <div class="sub">Red de administración: <b>10.16.0.100</b> / <b>10.16.0.11</b></div>
+    </div>
+    <div class="meta">
+      <span id="conn-status" class="badge unk">Conectando</span>
+      <span>Host activo: <b id="host-activo">N/A</b></span>
+      <span>Actualizado: <b id="last-update" class="num">N/A</b> <span id="stale" class="stale"></span></span>
+    </div>
+  </div>
+
+  <div id="link-panel" class="card link-panel">
+    <span class="dot"></span>
+    <div>
+      <div class="link-label">Estado del PBX Link (Signaling Server)</div>
+      <div id="pbx-link" class="link-state">UNKNOWN</div>
+    </div>
+    <div id="link-note" class="link-note">Esperando datos del Call Server…</div>
+  </div>
+
+  <div class="stats">
+    <div class="card stat sets">
+      <h3>Anexos IP (Sets)</h3>
+      <div class="row">
+        <div><div class="big reg num" id="sets-reg">0</div><div class="lbl">Registrados</div></div>
+        <div><div class="big busy num" id="sets-busy">0</div><div class="lbl">En llamada</div></div>
+      </div>
+      <div class="bar"><i id="sets-bar"></i></div>
+    </div>
+    <div class="card stat vtrk">
+      <h3>Troncales virtuales (VTRK)</h3>
+      <div class="row">
+        <div><div class="big reg num" id="vtrk-reg">0</div><div class="lbl">Canales registrados</div></div>
+        <div><div class="big busy num" id="vtrk-busy">0</div><div class="lbl">Ocupados</div></div>
+      </div>
+      <div class="bar"><i id="vtrk-bar"></i></div>
+    </div>
+  </div>
+
+  <div class="tables">
+    <div class="card">
+      <h2>IP Media Gateways / MGC <small>LD 117</small></h2>
+      <div class="split" id="ipmg-split">
+        <table>
+          <thead><tr><th>IPMG</th><th>Tipo</th><th>Estado</th></tr></thead>
+          <tbody id="ipmg-body-a"><tr><td colspan="3" class="empty">Cargando…</td></tr></tbody>
+        </table>
+        <table id="ipmg-table-b">
+          <thead><tr><th>IPMG</th><th>Tipo</th><th>Estado</th></tr></thead>
+          <tbody id="ipmg-body-b"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Canales D <small>LD 96 / LD 60</small></h2>
+      <table>
+        <thead><tr><th>Canal</th><th>Estado</th></tr></thead>
+        <tbody id="dch-table-body"><tr><td colspan="2" class="empty">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="errors"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// Estado del PBX Link -> clase de color
+function linkClass(s) {
+  s = String(s || "").toUpperCase();
+  if (/\bDOWN\b/.test(s)) return "bad";
+  if (/\bUP\b/.test(s)) return "ok";
+  return "unk";
+}
+
+// Estado genérico (IPMG / canales D) -> clase de color
+function badgeClass(s) {
+  s = String(s || "").toUpperCase();
+  // Rojo: caído / deshabilitado / sin servicio
+  if (/\bDOWN\b|DISABLED|DSBL|OFFLINE|RELEASED|\bRLS\b|FAIL|LOST|\bOOS\b|OUT.?OF.?SERV|UNREACH/.test(s)) return "bad";
+  // Naranja: configurado pero sin registrar, o en reposo
+  if (/UNREG|CONF|IDLE/.test(s)) return "warn";
+  // Verde: registrado / activo
+  if (/\bREG\b|ESTABLISHED|ONLINE|ENBL|ACTIVE|ACTV|\bUP\b|\bEST\b/.test(s)) return "ok";
+  return "unk";
+}
+
+function setBar(id, busy, reg) {
+  $(id).style.width = (reg > 0 ? Math.min(100, busy / reg * 100) : 0) + "%";
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const d = await res.json();
+    const online = d.status === 'ONLINE';
+
+    const st = $('conn-status');
+    st.textContent = online ? 'ONLINE' : 'OFFLINE';
+    st.className = 'badge ' + (online ? 'ok' : 'bad');
+    $('host-activo').textContent = d.active_host || 'N/A';
+    $('last-update').textContent = d.last_update || 'N/A';
+    $('stale').textContent = online ? '' : '(datos desactualizados)';
+
+    // PBX Link: verde si UP, rojo si DOWN
+    const ss = d.ss_status || {};
+    const state = ss.pbxlink_state || 'UNKNOWN';
+    const cls = online ? linkClass(state) : 'unk';
+    $('link-panel').className = 'card link-panel ' + cls;
+    $('pbx-link').textContent = online ? state : 'SIN DATOS';
+    $('link-note').textContent =
+      !online ? 'Sin conexión con los Call Servers. Último dato no confiable.' :
+      cls === 'ok' ? 'El enlace con el Call Server está activo.' :
+      cls === 'bad' ? 'El enlace con el Call Server está caído. Revisar de inmediato.' :
+      'No se pudo leer el estado del enlace.';
+
+    // Sets y VTRK
+    const sets = ss.sets || {}, vtrk = ss.vtrk || {};
+    $('sets-reg').textContent = sets.registered ?? 0;
+    $('sets-busy').textContent = sets.busy ?? 0;
+    $('vtrk-reg').textContent = vtrk.registered ?? 0;
+    $('vtrk-busy').textContent = vtrk.busy ?? 0;
+    setBar('sets-bar', sets.busy ?? 0, sets.registered ?? 0);
+    setBar('vtrk-bar', vtrk.busy ?? 0, vtrk.registered ?? 0);
+
+    // IPMG
+    const ipmgRow = i => `<tr><td class="num">${esc(i.ipmg)}</td><td>${esc(i.type)}</td><td><span class="badge ${badgeClass(i.status)}">${esc(i.status)}</span></td></tr>`;
+    const list = d.ipmg || [];
+    const split = $('ipmg-split');
+    if (list.length) {
+      const half = Math.ceil(list.length / 2);   // izquierda: primera mitad, derecha: segunda
+      split.classList.toggle('single', list.length < 2);
+      $('ipmg-body-a').innerHTML = list.slice(0, half).map(ipmgRow).join('');
+      $('ipmg-body-b').innerHTML = list.slice(half).map(ipmgRow).join('');
+    } else {
+      split.classList.add('single');
+      $('ipmg-body-a').innerHTML = '<tr><td colspan="3" class="empty">No se detectaron tarjetas IPMG</td></tr>';
+      $('ipmg-body-b').innerHTML = '';
+    }
+
+    // Canales D
+    $('dch-table-body').innerHTML = (d.dchannels && d.dchannels.length)
+      ? d.dchannels.map(c => `<tr><td><b>DCH ${esc(c.dch)}</b></td><td><span class="badge ${badgeClass(c.status)}">${esc(c.status)}</span></td></tr>`).join('')
+      : '<tr><td colspan="2" class="empty">Sin datos</td></tr>';
+
+    // Errores
+    const err = $('errors');
+    if (d.errors && d.errors.length) { err.textContent = d.errors.join(' | '); err.classList.add('show'); }
+    else { err.textContent = ''; err.classList.remove('show'); }
+  } catch (e) {
+    console.error("Error al obtener estado:", e);
+    $('conn-status').textContent = 'SIN RESPUESTA';
+    $('conn-status').className = 'badge bad';
+    $('link-panel').className = 'card link-panel unk';
+    $('pbx-link').textContent = 'SIN DATOS';
+    $('link-note').textContent = 'No responde el servidor del monitor (Flask).';
+  }
+}
+
+setInterval(fetchStatus, 5000);
+fetchStatus();
+</script>
+</body>
+</html>
